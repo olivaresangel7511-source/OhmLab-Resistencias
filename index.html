@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OhmLab | Calculadora de resistencias</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1220;--panel:#152239;--panel2:#111c30;--accent:#62d6c7;--text:#e7eef9;--muted:#a9bad3;--line:#2a3b56}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:var(--panel2);padding:26px max(22px,calc((100vw - 1120px)/2));border-bottom:1px solid var(--line)}
+h1{margin:0;color:var(--accent);font-size:2rem}header p{margin:5px 0 0;color:var(--muted);font-size:.85rem;font-weight:700;letter-spacing:.05em}
+main{max-width:1120px;margin:24px auto;padding:0 18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:22px;margin-bottom:18px}
+.controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;align-items:end}
+label{display:block;color:var(--muted);font-size:.9rem;margin-bottom:6px}input,select,button{font:inherit;width:100%;border-radius:9px;padding:11px 12px;border:1px solid var(--line);background:#0b1628;color:var(--text)}
+button{background:var(--accent);color:#092026;font-weight:800;border:0;cursor:pointer}button:hover{filter:brightness(1.07)}.hint{font-size:.88rem;color:var(--muted);margin:12px 0 0}
+.status{color:var(--accent);font-weight:700;min-height:1.5em}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.metric{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px}.metric small{display:block;color:var(--muted)}.metric strong{font-size:1.2rem;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;min-width:720px}th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line)}th{color:var(--accent);font-size:.86rem}tbody tr:hover{background:#1a2b44}.error{color:#ffce7a}.empty{color:var(--muted);padding:18px 0}
+footer{max-width:1120px;margin:0 auto;padding:0 18px 28px;color:var(--muted);font-size:.85rem}
+@media(max-width:600px){header{padding:20px}h1{font-size:1.7rem}.panel{padding:16px}}
+</style>
+</head>
+<body>
+<header><h1>OhmLab</h1><p>BUSCADOR DE VALORES COMERCIALES · REDES DE 1 A 3 RESISTENCIAS</p></header>
+<main>
+<section class="panel">
+<h2>Configurar búsqueda</h2>
+<div class="controls">
+<div><label for="target">Resistencia deseada (Ω)</label><input id="target" type="number" min="0.1" max="100000000" step="any" value="100000" required></div>
+<div><label for="tol">Tolerancia comercial</label><select id="tol"><option value="10">10 % (serie E12)</option><option value="1">1 % (serie E96)</option></select></div>
+<div><label for="maxParts">Máximo de resistencias</label><select id="maxParts"><option value="1">1 resistencia</option><option value="2">Hasta 2 resistencias</option><option value="3" selected>Hasta 3 resistencias</option></select></div>
+<div><label for="limit">Resultados a mostrar</label><select id="limit"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
+<div><button id="search">Buscar combinaciones</button></div>
+</div>
+<p class="hint">Se consideran valores nominales comerciales de 0.1 Ω a 100 MΩ. El error se calcula respecto al valor deseado.</p>
+<p id="status" class="status" role="status"></p>
+</section>
+<section class="panel">
+<h2>Mejor resultado</h2><div id="best" class="summary"><div class="empty">Ingresa un valor y pulsa “Buscar combinaciones”.</div></div>
+</section>
+<section class="panel">
+<h2>Combinaciones encontradas</h2>
+<div class="table-wrap"><table><thead><tr><th>#</th><th>Configuración</th><th>Resistencias usadas</th><th>Equivalente</th><th>Error</th><th>Componentes</th></tr></thead><tbody id="rows"><tr><td colspan="6" class="empty">Aún no hay resultados.</td></tr></tbody></table></div>
+</section>
+</main>
+<footer>OhmLab · Herramienta educativa. Las conexiones consideradas son serie, paralelo y las topologías mixtas de hasta tres resistencias.</footer>
+<script>
+const E12=[10,12,15,18,22,27,33,39,47,56,68,82];
+const E96=[100,102,105,107,110,113,115,118,121,124,127,130,133,137,140,143,147,150,154,158,162,165,169,174,178,182,187,191,196,200,205,210,215,221,226,232,237,243,249,255,261,267,274,280,287,294,301,309,316,324,332,340,348,357,365,374,383,392,402,412,422,432,442,453,464,475,487,499,511,523,536,549,562,576,590,604,619,634,649,665,681,698,715,732,750,768,787,806,825,845,866,887,909,931,953,976];
+const $=id=>document.getElementById(id);
+function fmt(v){if(v>=1e6)return (v/1e6).toPrecision(6).replace(/\.?0+$/,'')+' MΩ';if(v>=1e3)return (v/1e3).toPrecision(6).replace(/\.?0+$/,'')+' kΩ';return Number(v.toPrecision(6))+' Ω'}
+function commercial(tol){const base=tol===10?E12:E96,div=tol===10?10:100,out=[];for(let d=-1;d<=9;d++){const f=10**d/div;for(const x of base){const v=x*f;if(v>=.1&&v<=1e8)out.push(v)}}return [...new Set(out)].sort((a,b)=>a-b)}
+function parallel(a,b){return 1/(1/a+1/b)}
+function err(v,t){return Math.abs(v-t)/t*100}
+function neighbors(vals,ideal,k=2){if(!Number.isFinite(ideal))return [];let lo=0,hi=vals.length;while(lo<hi){const m=(lo+hi)>>1;if(vals[m]<ideal)lo=m+1;else hi=m}return vals.slice(Math.max(0,lo-k),Math.min(vals.length,lo+k+1))}
+function search(target,tol,maxParts,limit){
+ const vals=commercial(tol), best=new Map();
+ function add(value,parts,top,desc){if(!Number.isFinite(value)||value<=0)return;const error=err(value,target);const key=top+'|'+desc+'|'+value.toPrecision(12);if(!best.has(key))best.set(key,{value,parts,top,desc,error,count:parts.length})}
+ for(const a of vals)add(a,[a],'Individual',fmt(a));
+ if(maxParts>=2)for(const a of vals){
+  for(const b of neighbors(vals,target-a))add(a+b,[a,b],'Serie',fmt(a)+' + '+fmt(b));
+  const den=1/target-1/a;if(den>0){const ideal=1/den;for(const b of neighbors(vals,ideal))add(parallel(a,b),[a,b],'Paralelo',fmt(a)+' ∥ '+fmt(b))}
+ }
+ if(maxParts>=3){
+  const n=vals.length;
+  for(let i=0;i<n;i++){const a=vals[i];for(let j=i;j<n;j++){const b=vals[j];
+   let ideal=target-a-b;for(const c of neighbors(vals,ideal))add(a+b+c,[a,b,c],'Tres en serie',fmt(a)+' + '+fmt(b)+' + '+fmt(c));
+   let den=1/target-1/a-1/b;if(den>0){ideal=1/den;for(const c of neighbors(vals,ideal))add(1/(1/a+1/b+1/c),[a,b,c],'Tres en paralelo',fmt(a)+' ∥ '+fmt(b)+' ∥ '+fmt(c))}
+   const sum=a+b;den=1/target-1/sum;if(den>0){ideal=1/den;for(const c of neighbors(vals,ideal))add(parallel(sum,c),[a,b,c],'Serie-paralelo','('+fmt(a)+' + '+fmt(b)+') ∥ '+fmt(c))}
+   ideal=target-parallel(a,b);for(const c of neighbors(vals,ideal))add(parallel(a,b)+c,[a,b,c],'Paralelo-serie','('+fmt(a)+' ∥ '+fmt(b)+') + '+fmt(c))
+  }}
+ }
+ return [...best.values()].sort((a,b)=>a.error-b.error||a.count-b.count).slice(0,limit)
+}
+function run(){const target=Number($('target').value),tol=Number($('tol').value),maxParts=Number($('maxParts').value),limit=Number($('limit').value);
+ if(!Number.isFinite(target)||target<.1||target>1e8){$('status').textContent='Escribe una resistencia entre 0.1 Ω y 100 MΩ.';return}
+ $('search').disabled=true;$('search').textContent='Buscando…';$('status').textContent='Calculando combinaciones comerciales…';
+ setTimeout(()=>{try{const results=search(target,tol,maxParts,limit);$('rows').innerHTML='';if(!results.length){$('rows').innerHTML='<tr><td colspan="6">No se encontraron resultados.</td></tr>';$('best').innerHTML='<div class="empty">Sin resultados.</div>'}else{
+ const r=results[0];$('best').innerHTML=`<div class="metric"><small>Resistencia equivalente</small><strong>${fmt(r.value)}</strong></div><div class="metric"><small>Error</small><strong>${r.error.toFixed(5)} %</strong></div><div class="metric"><small>Configuración</small><strong>${r.top}</strong></div><div class="metric"><small>Componentes</small><strong>${r.count}</strong></div>`;
+ results.forEach((x,i)=>{const tr=document.createElement('tr');[i+1,x.top,x.desc,fmt(x.value),x.error.toFixed(5)+' %',x.count].forEach((v,j)=>{const td=document.createElement('td');td.textContent=v;if(j===4)td.className='error';tr.appendChild(td)});$('rows').appendChild(tr)});
+ $('status').textContent=`Se muestran ${results.length} resultados con serie ${tol===10?'E12 (10 %)':'E96 (1 %)'} .`;
+ }}catch(e){$('status').textContent='Ocurrió un error al calcular: '+e.message}finally{$('search').disabled=false;$('search').textContent='Buscar combinaciones'}},30)}
+$('search').addEventListener('click',run);$('target').addEventListener('keydown',e=>{if(e.key==='Enter')run()});
+</script>
+</body></html>
